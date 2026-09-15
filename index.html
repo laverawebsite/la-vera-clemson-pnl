@@ -38,6 +38,8 @@
   }
   .topbar .right{display:flex;align-items:center;gap:6px;}
   .nav-arrow{cursor:pointer;font-size:15px;padding:2px 4px;}
+  .date-range-bar{flex-direction:column;align-items:stretch;gap:8px;}
+  .date-field{display:flex;justify-content:space-between;align-items:center;}
   .date-input{
     background:#fff;border:1.5px solid var(--card-border);border-radius:5px;
     font-size:13px;color:#000;padding:5px 8px;
@@ -197,6 +199,12 @@ function formatDate(d){
   const dt = new Date(d + 'T00:00:00');
   return dt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
 }
+function formatDateRange(start, end){
+  if (!start && !end) return '(no dates set)';
+  if (start && !end) return formatDate(start) + ' – ?';
+  if (!start && end) return '? – ' + formatDate(end);
+  return formatDate(start) + ' – ' + formatDate(end);
+}
 function categoryTotal(week, catId){
   return week.items[catId].reduce((sum, it) => sum + it.sign * (parseFloat(it.amount) || 0), 0);
 }
@@ -235,6 +243,7 @@ async function loadAllWeeks(){
     weeks.push({
       id: w.id,
       weekStart: w.week_start,
+      weekEnd: w.week_end,
       saved: w.saved,
       items: itemsByWeek[w.id] || blankItems()
     });
@@ -244,7 +253,7 @@ async function loadAllWeeks(){
 
 async function persistWeek(week){
   const { error: upsertErr } = await supa.from('weeks').upsert({
-    id: week.id, client_name: BRAND.clientName, week_start: week.weekStart, saved: true
+    id: week.id, client_name: BRAND.clientName, week_start: week.weekStart, week_end: week.weekEnd, saved: true
   });
   if (upsertErr) throw upsertErr;
 
@@ -325,9 +334,15 @@ function dashboardScreen(){
 
   return `
     ${navTabsHtml('dashboard')}
-    <div class="topbar">
-      <span>Week starting</span>
-      <input class="date-input" type="date" value="${week.weekStart || ''}" onchange="updateWeekStart(this.value)">
+    <div class="topbar date-range-bar">
+      <div class="date-field">
+        <span>Week starting</span>
+        <input class="date-input" type="date" value="${week.weekStart || ''}" onchange="updateWeekStart(this.value)">
+      </div>
+      <div class="date-field">
+        <span>Week ending</span>
+        <input class="date-input" type="date" value="${week.weekEnd || ''}" onchange="updateWeekEnd(this.value)">
+      </div>
     </div>
     <div class="net-card">
       <span class="label">Net profit / loss</span>
@@ -348,7 +363,7 @@ function pastWeeksScreen(){
     return `
       <div class="week-row" onclick="openWeek('${w.id}')">
         <div>
-          <div class="label">${formatDate(w.weekStart)}</div>
+          <div class="label">${formatDateRange(w.weekStart, w.weekEnd)}</div>
           ${isCurrent && !w.saved ? `<div class="sub">current, unsaved</div>` : ''}
         </div>
         <div class="right"><span>${formatMoney(netTotal(w))}</span><span>&rsaquo;</span></div>
@@ -409,7 +424,7 @@ function reportScreen(){
     <div class="report-card" id="report-print">
       <div class="report-head">
         <div class="title">Weekly P&amp;L &mdash; ${BRAND.clientName}</div>
-        <div class="sub">Week of ${formatDate(week.weekStart)}</div>
+        <div class="sub">Week of ${formatDateRange(week.weekStart, week.weekEnd)}</div>
       </div>
       <div class="report-net">
         <div class="label">Net profit / loss</div>
@@ -468,6 +483,7 @@ function updateItemAmount(catId, itemId, value){
   updateTotals();
 }
 function updateWeekStart(value){ getCurrentWeek().weekStart = value; }
+function updateWeekEnd(value){ getCurrentWeek().weekEnd = value; }
 
 function updateTotals(){
   const week = getCurrentWeek();
@@ -520,7 +536,7 @@ function openWeek(weekId){
 
 function newWeek(){
   const id = crypto.randomUUID();
-  const week = { id, weekStart: '', saved:false, items: blankItems() };
+  const week = { id, weekStart: '', weekEnd: '', saved:false, items: blankItems() };
   ensureStandardItems(week);
   state.weeks.unshift(week);
   state.currentWeekId = id;
@@ -539,7 +555,7 @@ async function init(){
     state.weeks = [];
   }
   const id = crypto.randomUUID();
-  const week = { id, weekStart:'', saved:false, items: blankItems() };
+  const week = { id, weekStart:'', weekEnd:'', saved:false, items: blankItems() };
   ensureStandardItems(week);
   state.weeks.unshift(week);
   state.currentWeekId = id;
