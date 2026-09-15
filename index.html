@@ -79,6 +79,13 @@
   .name-input::placeholder,.amount-input::placeholder{color:#9a9a96;font-style:italic;}
   .amount-input{width:80px;text-align:right;}
   .remove-btn{width:22px;height:22px;flex-shrink:0;border:none;background:transparent;color:#000;font-size:15px;cursor:pointer;padding:0;}
+  .save-line-btn{
+    width:26px;height:26px;flex-shrink:0;border:1px solid var(--card-border);border-radius:5px;
+    background:#000;color:#fff;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;padding:0;
+  }
+  .save-line-btn.saved{background:#3a6b3a;border-color:#2a4f2a;}
+  .save-line-btn:disabled{opacity:0.6;cursor:default;}
   .add-line-btn{
     width:100%;margin-top:6px;padding:6px;font-size:12px;background:transparent;
     border:1px dashed var(--card-border);border-radius:5px;color:#000;cursor:pointer;
@@ -295,24 +302,32 @@ function dashboardScreen(){
     const standardHtml = qs.map(q => {
       const it = items.find(i => i.name === q.label);
       if (!it) return '';
+      const btnClass = it.lineSaved ? 'save-line-btn saved' : 'save-line-btn';
+      const btnLabel = it.lineSaving ? '…' : (it.lineSaved ? '&check;' : '&#128190;');
       return `
       <div class="line-item standard-item">
         <span class="q-label">${escapeHtml(q.question)}</span>
         <input class="amount-input" type="number" step="0.01" placeholder="0.00" value="${it.amount || ''}"
           oninput="updateItemAmount('${cat.id}','${it.id}', this.value)">
+        <button class="${btnClass}" onclick="saveLineItem('${cat.id}','${it.id}')" title="Save this line" ${it.lineSaving ? 'disabled' : ''}>${btnLabel}</button>
       </div>`;
     }).join('');
 
     const customItems = items.filter(it => !qs.some(q => q.label === it.name));
-    const customHtml = customItems.map(it => `
+    const customHtml = customItems.map(it => {
+      const btnClass = it.lineSaved ? 'save-line-btn saved' : 'save-line-btn';
+      const btnLabel = it.lineSaving ? '…' : (it.lineSaved ? '&check;' : '&#128190;');
+      return `
       <div class="line-item">
         <button class="sign-btn" onclick="toggleItemSign('${cat.id}','${it.id}')">${it.sign > 0 ? '+' : '&minus;'}</button>
         <input class="name-input" type="text" placeholder="e.g. Catering revenue" value="${escapeHtml(it.name)}"
           oninput="updateItemName('${cat.id}','${it.id}', this.value)">
         <input class="amount-input" type="number" step="0.01" placeholder="0.00" value="${it.amount || ''}"
           oninput="updateItemAmount('${cat.id}','${it.id}', this.value)">
+        <button class="${btnClass}" onclick="saveLineItem('${cat.id}','${it.id}')" title="Save this line" ${it.lineSaving ? 'disabled' : ''}>${btnLabel}</button>
         <button class="remove-btn" onclick="removeLineItem('${cat.id}','${it.id}')" title="Remove">&times;</button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     const itemsHtml = standardHtml + customHtml;
 
@@ -473,13 +488,15 @@ function toggleCategory(catId){ state.expanded[catId] = !state.expanded[catId]; 
 
 function toggleItemSign(catId, itemId){
   const item = getCurrentWeek().items[catId].find(it => it.id === itemId);
-  item.sign *= -1; render();
+  item.sign *= -1; item.lineSaved = false; render();
 }
 function updateItemName(catId, itemId, value){
-  getCurrentWeek().items[catId].find(it => it.id === itemId).name = value;
+  const item = getCurrentWeek().items[catId].find(it => it.id === itemId);
+  item.name = value; item.lineSaved = false;
 }
 function updateItemAmount(catId, itemId, value){
-  getCurrentWeek().items[catId].find(it => it.id === itemId).amount = parseFloat(value) || 0;
+  const item = getCurrentWeek().items[catId].find(it => it.id === itemId);
+  item.amount = parseFloat(value) || 0; item.lineSaved = false;
   updateTotals();
 }
 function updateWeekStart(value){ getCurrentWeek().weekStart = value; }
@@ -520,9 +537,40 @@ async function saveWeek(){
   try {
     await persistWeek(week);
     week.saved = true;
+    CATEGORY_DEFS.forEach(cat => week.items[cat.id].forEach(it => { it.lineSaved = true; }));
     state.status = 'Saved.';
   } catch(e){
     state.status = 'Error saving — check your connection and Supabase setup.';
+  }
+  render();
+}
+
+async function saveLineItem(catId, itemId){
+  const week = getCurrentWeek();
+  if (!week.weekStart){
+    state.status = 'Error: pick a week-starting date first.';
+    render();
+    return;
+  }
+  const it = week.items[catId].find(i => i.id === itemId);
+  it.lineSaving = true;
+  render();
+  try {
+    const { error: weekErr } = await supa.from('weeks').upsert({
+      id: week.id, client_name: BRAND.clientName, week_start: week.weekStart, week_end: week.weekEnd, saved: week.saved
+    });
+    if (weekErr) throw weekErr;
+    const { error: itemErr } = await supa.from('line_items').upsert({
+      id: it.id, week_id: week.id, category: catId, name: it.name, amount: it.amount, sign: it.sign
+    });
+    if (itemErr) throw itemErr;
+    it.lineSaving = false;
+    it.lineSaved = true;
+    state.status = '';
+  } catch(e){
+    it.lineSaving = false;
+    it.lineSaved = false;
+    state.status = 'Error saving that line — check your connection.';
   }
   render();
 }
