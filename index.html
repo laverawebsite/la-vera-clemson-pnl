@@ -70,6 +70,9 @@
   .name-input,.amount-input{
     background:#ffffff;border:1.5px solid var(--card-border);border-radius:5px;font-size:13px;color:#000;padding:6px 8px;
   }
+  .standard-item{justify-content:space-between;}
+  .standard-item .q-label{font-size:13px;color:#000;flex:1;padding-right:10px;}
+  .standard-item .amount-input{width:100px;}
   .name-input{flex:1;min-width:0;}
   .name-input::placeholder,.amount-input::placeholder{color:#9a9a96;font-style:italic;}
   .amount-input{width:80px;text-align:right;}
@@ -133,8 +136,8 @@
    SETUP — paste your Supabase project values here, then
    reopen this file. See the setup checklist you were given.
    ========================================================= */
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://fumzltgxcacbekebctbs.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1bXpsdGd4Y2FjYmVrZWJjdGJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0ODU4MjMsImV4cCI6MjEwNTA2MTgyM30.G4-XailYe13Toah6bz4usTcpuAqdL2SRHnjXEYPGxrk';
 
 const BRAND = { consultingName: 'Lozano Restaurant Consulting', clientName: 'La Vera Clemson' };
 const CATEGORY_DEFS = [
@@ -143,6 +146,26 @@ const CATEGORY_DEFS = [
   { id:'labor', label:'Labor', defaultSign:-1 },
   { id:'opex', label:'Operating expenses', defaultSign:-1 }
 ];
+
+const STANDARD_QUESTIONS = {
+  revenue: [
+    { label:'Food sales', question:'Food sales this week?', sign:1 },
+    { label:'Beverage sales', question:'Beverage sales this week?', sign:1 }
+  ],
+  cogs: [
+    { label:'Food purchases', question:'Food purchases this week?', sign:-1 },
+    { label:'Beverage purchases', question:'Beverage purchases this week?', sign:-1 }
+  ],
+  labor: [
+    { label:'Hourly wages', question:'Hourly wages paid this week?', sign:-1 },
+    { label:'Payroll taxes', question:'Payroll taxes this week?', sign:-1 }
+  ],
+  opex: [
+    { label:'Electric bill', question:'Electric bill this week?', sign:-1 },
+    { label:'Water bill', question:'Water bill this week?', sign:-1 },
+    { label:'Third-party vendor', question:'Third-party vendor fees this week?', sign:-1 }
+  ]
+};
 
 let supa = null;
 let chartInstance = null;
@@ -156,6 +179,15 @@ let state = {
 
 function blankItems(){ return { revenue:[], cogs:[], labor:[], opex:[] }; }
 function makeItem(name, amount, sign){ return { id: crypto.randomUUID(), name, amount, sign }; }
+function ensureStandardItems(week){
+  CATEGORY_DEFS.forEach(cat => {
+    const qs = STANDARD_QUESTIONS[cat.id] || [];
+    qs.forEach(q => {
+      const exists = week.items[cat.id].some(it => it.name === q.label);
+      if (!exists) week.items[cat.id].push(makeItem(q.label, 0, q.sign));
+    });
+  });
+}
 function formatMoney(n){
   const sign = n < 0 ? '-' : '';
   return sign + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
@@ -249,15 +281,31 @@ function dashboardScreen(){
     const total = categoryTotal(week, cat.id);
     const items = week.items[cat.id];
     const expanded = state.expanded[cat.id];
-    const itemsHtml = items.length ? items.map(it => `
+    const qs = STANDARD_QUESTIONS[cat.id] || [];
+
+    const standardHtml = qs.map(q => {
+      const it = items.find(i => i.name === q.label);
+      if (!it) return '';
+      return `
+      <div class="line-item standard-item">
+        <span class="q-label">${escapeHtml(q.question)}</span>
+        <input class="amount-input" type="number" step="0.01" placeholder="0.00" value="${it.amount || ''}"
+          oninput="updateItemAmount('${cat.id}','${it.id}', this.value)">
+      </div>`;
+    }).join('');
+
+    const customItems = items.filter(it => !qs.some(q => q.label === it.name));
+    const customHtml = customItems.map(it => `
       <div class="line-item">
         <button class="sign-btn" onclick="toggleItemSign('${cat.id}','${it.id}')">${it.sign > 0 ? '+' : '&minus;'}</button>
-        <input class="name-input" type="text" placeholder="e.g. Electric bill" value="${escapeHtml(it.name)}"
+        <input class="name-input" type="text" placeholder="e.g. Catering revenue" value="${escapeHtml(it.name)}"
           oninput="updateItemName('${cat.id}','${it.id}', this.value)">
         <input class="amount-input" type="number" step="0.01" placeholder="0.00" value="${it.amount || ''}"
           oninput="updateItemAmount('${cat.id}','${it.id}', this.value)">
         <button class="remove-btn" onclick="removeLineItem('${cat.id}','${it.id}')" title="Remove">&times;</button>
-      </div>`).join('') : `<div class="empty-hint">No line items yet.</div>`;
+      </div>`).join('');
+
+    const itemsHtml = standardHtml + customHtml;
 
     return `
       <div class="cat-card">
@@ -270,7 +318,7 @@ function dashboardScreen(){
         </div>
         <div class="cat-items ${expanded ? '' : 'collapsed'}">
           ${itemsHtml}
-          <button class="add-line-btn" onclick="addLineItem('${cat.id}')">+ Add line item</button>
+          <button class="add-line-btn" onclick="addLineItem('${cat.id}')">+ Add other</button>
         </div>
       </div>`;
   }).join('');
@@ -463,11 +511,18 @@ async function saveWeek(){
   render();
 }
 
-function openWeek(weekId){ state.currentWeekId = weekId; state.view = 'dashboard'; render(); }
+function openWeek(weekId){
+  state.currentWeekId = weekId;
+  ensureStandardItems(getCurrentWeek());
+  state.view = 'dashboard';
+  render();
+}
 
 function newWeek(){
   const id = crypto.randomUUID();
-  state.weeks.unshift({ id, weekStart: '', saved:false, items: blankItems() });
+  const week = { id, weekStart: '', saved:false, items: blankItems() };
+  ensureStandardItems(week);
+  state.weeks.unshift(week);
   state.currentWeekId = id;
   state.view = 'dashboard';
   render();
@@ -479,11 +534,14 @@ async function init(){
   supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   try {
     state.weeks = await loadAllWeeks();
+    state.weeks.forEach(ensureStandardItems);
   } catch(e){
     state.weeks = [];
   }
   const id = crypto.randomUUID();
-  state.weeks.unshift({ id, weekStart:'', saved:false, items: blankItems() });
+  const week = { id, weekStart:'', saved:false, items: blankItems() };
+  ensureStandardItems(week);
+  state.weeks.unshift(week);
   state.currentWeekId = id;
   render();
 }
