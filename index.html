@@ -122,6 +122,8 @@
   .report-line{margin-bottom:14px;}
   .report-line .row{display:flex;justify-content:space-between;font-size:14px;color:#000;font-weight:600;}
   .report-line .explain{font-size:13px;color:var(--report-muted);margin-top:2px;}
+  .report-subitems{margin-top:6px;padding-top:6px;border-top:1px dashed #d8d7d0;}
+  .report-subrow{display:flex;justify-content:space-between;font-size:12px;color:var(--report-muted);padding:2px 0;}
   .report-footer{border-top:1px solid #d8d7d0;margin-top:16px;padding-top:10px;font-size:11px;color:#8a8a86;text-align:center;}
   .report-actions{display:flex;gap:8px;margin-top:12px;}
 
@@ -425,6 +427,14 @@ function drawTrendChart(){
   });
 }
 
+function categoryLineItemsHtml(week, catId){
+  const items = week.items[catId].filter(it => (parseFloat(it.amount) || 0) !== 0);
+  if (!items.length) return '';
+  const rows = items.map(it => `
+    <div class="report-subrow"><span>${escapeHtml(it.name)}</span><span>${formatMoney(Math.abs(parseFloat(it.amount) || 0))}</span></div>`).join('');
+  return `<div class="report-subitems">${rows}</div>`;
+}
+
 function reportScreen(){
   const week = getCurrentWeek();
   const net = netTotal(week);
@@ -449,13 +459,17 @@ function reportScreen(){
           : `The business spent ${formatMoney(Math.abs(net))} more than it made this week.`}</div>
       </div>
       <div class="report-line"><div class="row"><span>Revenue</span><span>${formatMoney(revenue)}</span></div>
-        <div class="explain">What ${BRAND.clientName} brought in this week — the number everything else is measured against.</div></div>
+        <div class="explain">What ${BRAND.clientName} brought in this week — the number everything else is measured against.</div>
+        ${categoryLineItemsHtml(week, 'revenue')}</div>
       <div class="report-line"><div class="row"><span>COGS</span><span>${formatMoney(Math.abs(cogs))}</span></div>
-        <div class="explain">What it cost to buy the food and drinks sold this week — ${cogsPct}% of revenue.</div></div>
+        <div class="explain">What it cost to buy the food and drinks sold this week — ${cogsPct}% of revenue.</div>
+        ${categoryLineItemsHtml(week, 'cogs')}</div>
       <div class="report-line"><div class="row"><span>Labor</span><span>${formatMoney(Math.abs(labor))}</span></div>
-        <div class="explain">What it cost to pay the team that ran the restaurant this week.</div></div>
+        <div class="explain">What it cost to pay the team that ran the restaurant this week.</div>
+        ${categoryLineItemsHtml(week, 'labor')}</div>
       <div class="report-line"><div class="row"><span>Operating expenses</span><span>${formatMoney(Math.abs(opex))}</span></div>
-        <div class="explain">Everything else it took to keep the doors open — utilities, vendors, and similar bills.</div></div>
+        <div class="explain">Everything else it took to keep the doors open — utilities, vendors, and similar bills.</div>
+        ${categoryLineItemsHtml(week, 'opex')}</div>
       <div class="report-footer">Prepared by ${BRAND.consultingName}</div>
     </div>
     <div class="report-actions no-print"><button class="btn btn-primary" onclick="window.print()">Print / Save as PDF</button></div>
