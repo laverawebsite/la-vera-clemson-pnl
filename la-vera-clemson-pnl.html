@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>La Vera Clemson — Weekly P&L</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --app-bg:#242422;
+    --card-bg:#b3b2ac;
+    --card-border:#000000;
+    --white:#ffffff;
+    --muted:#5a5a56;
+    --report-muted:#3a3a38;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:#151514;display:flex;justify-content:center;padding:24px 12px;min-height:100vh;
+  }
+  .phone{width:420px;max-width:100%;}
+  .app{background:var(--app-bg);border-radius:16px;padding:14px;}
+
+  .nav-tabs{display:flex;gap:6px;margin-bottom:8px;}
+  .tab{
+    flex:1;padding:8px;border-radius:8px;font-size:12px;cursor:pointer;
+    border:1.5px solid var(--card-border);background:#3a3a38;color:#c9c8c2;text-align:center;
+  }
+  .tab.active{background:var(--card-bg);color:#000;}
+
+  .topbar{
+    background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:8px;
+    padding:9px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;
+    color:#000;font-size:13px;
+  }
+  .topbar .right{display:flex;align-items:center;gap:6px;}
+  .nav-arrow{cursor:pointer;font-size:15px;padding:2px 4px;}
+  .date-input{
+    background:#fff;border:1.5px solid var(--card-border);border-radius:5px;
+    font-size:13px;color:#000;padding:5px 8px;
+  }
+
+  .net-card{
+    background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:8px;
+    padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;
+  }
+  .net-card .label{font-size:13px;color:#000;}
+  .net-card .value{font-size:20px;font-weight:600;color:#000;}
+
+  .cat-list{display:flex;flex-direction:column;gap:6px;}
+  .cat-card{background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:8px;overflow:hidden;}
+  .cat-header{padding:9px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
+  .cat-header .name{font-size:14px;color:#000;}
+  .cat-header .right{display:flex;align-items:center;gap:8px;}
+  .cat-header .total{font-size:14px;color:#000;}
+  .cat-header .chev{font-size:13px;color:#000;width:14px;text-align:center;}
+
+  .cat-items{padding:0 12px 8px;display:flex;flex-direction:column;gap:5px;border-top:1.5px solid var(--card-border);}
+  .cat-items.collapsed{display:none;}
+  .empty-hint{font-size:12px;color:var(--report-muted);padding-top:8px;font-style:italic;}
+  .line-item{display:flex;align-items:center;gap:6px;padding-top:6px;}
+  .sign-btn{
+    width:22px;height:22px;flex-shrink:0;border:1px solid var(--card-border);border-radius:5px;
+    background:#a6a59f;color:#000;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;padding:0;
+  }
+  .name-input,.amount-input{
+    background:#ffffff;border:1.5px solid var(--card-border);border-radius:5px;font-size:13px;color:#000;padding:6px 8px;
+  }
+  .name-input{flex:1;min-width:0;}
+  .name-input::placeholder,.amount-input::placeholder{color:#9a9a96;font-style:italic;}
+  .amount-input{width:80px;text-align:right;}
+  .remove-btn{width:22px;height:22px;flex-shrink:0;border:none;background:transparent;color:#000;font-size:15px;cursor:pointer;padding:0;}
+  .add-line-btn{
+    width:100%;margin-top:6px;padding:6px;font-size:12px;background:transparent;
+    border:1px dashed var(--card-border);border-radius:5px;color:#000;cursor:pointer;
+  }
+
+  .actions{display:flex;gap:8px;margin-top:10px;}
+  .btn{flex:1;padding:9px;border-radius:8px;font-size:13px;cursor:pointer;border:1.5px solid var(--card-border);}
+  .btn-primary{background:#000;color:#fff;}
+  .btn-secondary{background:#fff;color:#000;}
+  .status-msg{font-size:12px;color:#c9c8c2;text-align:center;margin-top:6px;min-height:14px;}
+  .status-msg.error{color:#e08b8b;}
+
+  .week-row{
+    background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:8px;
+    padding:10px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:6px;
+  }
+  .week-row .label{font-size:14px;color:#000;}
+  .week-row .sub{font-size:11px;color:var(--report-muted);}
+  .week-row .right{display:flex;align-items:center;gap:8px;font-size:14px;color:#000;}
+  .empty-state{font-size:13px;color:#c9c8c2;text-align:center;padding:20px 8px;}
+
+  .trends-card{background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:8px;padding:12px;}
+  .trends-card .heading{font-size:13px;color:#000;margin-bottom:8px;}
+  .chart-wrap{background:#fff;border:1.5px solid var(--card-border);border-radius:6px;padding:10px;height:220px;}
+
+  .report-card{background:#fff;border:1.5px solid var(--card-border);border-radius:8px;padding:20px;}
+  .report-head{border-bottom:3px solid var(--card-bg);padding-bottom:10px;margin-bottom:14px;}
+  .report-head .title{font-size:17px;font-weight:600;color:#000;}
+  .report-head .sub{font-size:12px;color:var(--muted);}
+  .report-net{text-align:center;margin-bottom:18px;}
+  .report-net .label{font-size:12px;color:var(--muted);}
+  .report-net .value{font-size:28px;font-weight:600;color:#000;}
+  .report-net .explain{font-size:13px;color:var(--report-muted);margin-top:4px;}
+  .report-line{margin-bottom:14px;}
+  .report-line .row{display:flex;justify-content:space-between;font-size:14px;color:#000;font-weight:600;}
+  .report-line .explain{font-size:13px;color:var(--report-muted);margin-top:2px;}
+  .report-footer{border-top:1px solid #d8d7d0;margin-top:16px;padding-top:10px;font-size:11px;color:#8a8a86;text-align:center;}
+  .report-actions{display:flex;gap:8px;margin-top:12px;}
+
+  .setup-notice{background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:8px;padding:16px;font-size:13px;color:#000;line-height:1.5;}
+  .setup-notice code{background:#fff;border:1px solid #000;border-radius:4px;padding:1px 4px;font-size:12px;}
+
+  @media print{
+    body *{visibility:hidden;}
+    #report-print, #report-print *{visibility:visible;}
+    #report-print{position:absolute;top:0;left:0;width:100%;border:none;padding:0;}
+    body{background:#fff;padding:0;}
+    .no-print{display:none !important;}
+  }
+</style>
+</head>
+<body>
+<div class="phone"><div id="app" class="app"></div></div>
+
+<script>
+/* =========================================================
+   SETUP — paste your Supabase project values here, then
+   reopen this file. See the setup checklist you were given.
+   ========================================================= */
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
+const BRAND = { consultingName: 'Lozano Restaurant Consulting', clientName: 'La Vera Clemson' };
+const CATEGORY_DEFS = [
+  { id:'revenue', label:'Revenue', defaultSign:1 },
+  { id:'cogs', label:'COGS', defaultSign:-1 },
+  { id:'labor', label:'Labor', defaultSign:-1 },
+  { id:'opex', label:'Operating expenses', defaultSign:-1 }
+];
+
+let supa = null;
+let chartInstance = null;
+let state = {
+  view: 'dashboard', // dashboard | pastWeeks | trends | report
+  expanded: { revenue:false, cogs:false, labor:false, opex:false },
+  currentWeekId: null,
+  weeks: [],
+  status: ''
+};
+
+function blankItems(){ return { revenue:[], cogs:[], labor:[], opex:[] }; }
+function makeItem(name, amount, sign){ return { id: crypto.randomUUID(), name, amount, sign }; }
+function formatMoney(n){
+  const sign = n < 0 ? '-' : '';
+  return sign + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+function formatDate(d){
+  if (!d) return '(no date set)';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+function categoryTotal(week, catId){
+  return week.items[catId].reduce((sum, it) => sum + it.sign * (parseFloat(it.amount) || 0), 0);
+}
+function netTotal(week){
+  return CATEGORY_DEFS.reduce((sum, c) => sum + categoryTotal(week, c.id), 0);
+}
+function getCurrentWeek(){ return state.weeks.find(w => w.id === state.currentWeekId); }
+function escapeHtml(s){
+  return String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* ---------- Backend ---------- */
+function isConfigured(){
+  return SUPABASE_URL && SUPABASE_URL.indexOf('YOUR_SUPABASE_URL') === -1 &&
+         SUPABASE_ANON_KEY && SUPABASE_ANON_KEY.indexOf('YOUR_SUPABASE_ANON_KEY') === -1;
+}
+
+async function loadAllWeeks(){
+  const { data: weeksData, error: weeksErr } = await supa
+    .from('weeks').select('*').eq('client_name', BRAND.clientName).order('week_start', { ascending:false });
+  if (weeksErr) throw weeksErr;
+
+  const weeks = [];
+  const ids = weeksData.map(w => w.id);
+  let itemsByWeek = {};
+  if (ids.length){
+    const { data: itemsData, error: itemsErr } = await supa
+      .from('line_items').select('*').in('week_id', ids);
+    if (itemsErr) throw itemsErr;
+    itemsData.forEach(it => {
+      if (!itemsByWeek[it.week_id]) itemsByWeek[it.week_id] = blankItems();
+      itemsByWeek[it.week_id][it.category].push({ id: it.id, name: it.name, amount: parseFloat(it.amount), sign: it.sign });
+    });
+  }
+  weeksData.forEach(w => {
+    weeks.push({
+      id: w.id,
+      weekStart: w.week_start,
+      saved: w.saved,
+      items: itemsByWeek[w.id] || blankItems()
+    });
+  });
+  return weeks;
+}
+
+async function persistWeek(week){
+  const { error: upsertErr } = await supa.from('weeks').upsert({
+    id: week.id, client_name: BRAND.clientName, week_start: week.weekStart, saved: true
+  });
+  if (upsertErr) throw upsertErr;
+
+  const { error: delErr } = await supa.from('line_items').delete().eq('week_id', week.id);
+  if (delErr) throw delErr;
+
+  const rows = [];
+  CATEGORY_DEFS.forEach(cat => {
+    week.items[cat.id].forEach(it => {
+      rows.push({ id: it.id, week_id: week.id, category: cat.id, name: it.name, amount: it.amount, sign: it.sign });
+    });
+  });
+  if (rows.length){
+    const { error: insErr } = await supa.from('line_items').insert(rows);
+    if (insErr) throw insErr;
+  }
+}
+
+/* ---------- Screens ---------- */
+function navTabsHtml(active){
+  return `
+    <div class="nav-tabs">
+      <button class="tab ${active==='dashboard' ? 'active':''}" onclick="goTo('dashboard')">This week</button>
+      <button class="tab ${active==='pastWeeks' ? 'active':''}" onclick="goTo('pastWeeks')">Past weeks</button>
+      <button class="tab ${active==='trends' ? 'active':''}" onclick="goTo('trends')">Trends</button>
+    </div>`;
+}
+
+function dashboardScreen(){
+  const week = getCurrentWeek();
+  const net = netTotal(week);
+
+  const catHtml = CATEGORY_DEFS.map(cat => {
+    const total = categoryTotal(week, cat.id);
+    const items = week.items[cat.id];
+    const expanded = state.expanded[cat.id];
+    const itemsHtml = items.length ? items.map(it => `
+      <div class="line-item">
+        <button class="sign-btn" onclick="toggleItemSign('${cat.id}','${it.id}')">${it.sign > 0 ? '+' : '&minus;'}</button>
+        <input class="name-input" type="text" placeholder="e.g. Electric bill" value="${escapeHtml(it.name)}"
+          oninput="updateItemName('${cat.id}','${it.id}', this.value)">
+        <input class="amount-input" type="number" step="0.01" placeholder="0.00" value="${it.amount || ''}"
+          oninput="updateItemAmount('${cat.id}','${it.id}', this.value)">
+        <button class="remove-btn" onclick="removeLineItem('${cat.id}','${it.id}')" title="Remove">&times;</button>
+      </div>`).join('') : `<div class="empty-hint">No line items yet.</div>`;
+
+    return `
+      <div class="cat-card">
+        <div class="cat-header" onclick="toggleCategory('${cat.id}')">
+          <span class="name">${cat.label}</span>
+          <div class="right">
+            <span class="total" id="cat-total-${cat.id}">${formatMoney(total)}</span>
+            <span class="chev">${expanded ? '&#9652;' : '&#9662;'}</span>
+          </div>
+        </div>
+        <div class="cat-items ${expanded ? '' : 'collapsed'}">
+          ${itemsHtml}
+          <button class="add-line-btn" onclick="addLineItem('${cat.id}')">+ Add line item</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    ${navTabsHtml('dashboard')}
+    <div class="topbar">
+      <span>Week starting</span>
+      <input class="date-input" type="date" value="${week.weekStart || ''}" onchange="updateWeekStart(this.value)">
+    </div>
+    <div class="net-card">
+      <span class="label">Net profit / loss</span>
+      <span class="value" id="net-total">${formatMoney(net)}</span>
+    </div>
+    <div class="cat-list">${catHtml}</div>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="saveWeek()">${week.saved ? 'Saved — save again' : 'Save week'}</button>
+      <button class="btn btn-secondary" onclick="goTo('report')">Export PDF</button>
+    </div>
+    <div class="status-msg ${state.status.indexOf('Error') === 0 ? 'error' : ''}">${state.status}</div>
+  `;
+}
+
+function pastWeeksScreen(){
+  const rows = state.weeks.length ? state.weeks.map(w => {
+    const isCurrent = w.id === state.currentWeekId;
+    return `
+      <div class="week-row" onclick="openWeek('${w.id}')">
+        <div>
+          <div class="label">${formatDate(w.weekStart)}</div>
+          ${isCurrent && !w.saved ? `<div class="sub">current, unsaved</div>` : ''}
+        </div>
+        <div class="right"><span>${formatMoney(netTotal(w))}</span><span>&rsaquo;</span></div>
+      </div>`;
+  }).join('') : `<div class="empty-state">No saved weeks yet.</div>`;
+
+  return `
+    ${navTabsHtml('pastWeeks')}
+    <div class="topbar"><span>Past weeks</span><span class="nav-arrow" onclick="newWeek()">+ New week</span></div>
+    ${rows}
+  `;
+}
+
+function trendsScreen(){
+  const savedWeeks = state.weeks.filter(w => w.saved && w.weekStart).slice().sort((a,b) => a.weekStart.localeCompare(b.weekStart));
+  const body = savedWeeks.length >= 1
+    ? `<div class="chart-wrap"><canvas id="trend-canvas"></canvas></div>`
+    : `<div class="empty-state">Save at least one week to see a trend.</div>`;
+
+  return `
+    ${navTabsHtml('trends')}
+    <div class="trends-card">
+      <div class="heading">Net profit / loss by week</div>
+      ${body}
+    </div>
+  `;
+}
+
+function drawTrendChart(){
+  const canvas = document.getElementById('trend-canvas');
+  if (!canvas) return;
+  const savedWeeks = state.weeks.filter(w => w.saved && w.weekStart).slice().sort((a,b) => a.weekStart.localeCompare(b.weekStart));
+  const labels = savedWeeks.map(w => formatDate(w.weekStart));
+  const data = savedWeeks.map(w => netTotal(w));
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets: [{ label:'Net P&L', data, borderColor:'#000', backgroundColor:'rgba(0,0,0,0.08)', fill:true, tension:0.25, pointRadius:4 }] },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{ y:{ ticks:{ callback:v => '$' + v.toLocaleString() } } }
+    }
+  });
+}
+
+function reportScreen(){
+  const week = getCurrentWeek();
+  const net = netTotal(week);
+  const revenue = categoryTotal(week, 'revenue');
+  const cogs = categoryTotal(week, 'cogs');
+  const labor = categoryTotal(week, 'labor');
+  const opex = categoryTotal(week, 'opex');
+  const cogsPct = revenue > 0 ? Math.round((Math.abs(cogs) / revenue) * 100) : 0;
+
+  return `
+    <div class="topbar no-print"><span class="nav-arrow" onclick="goTo('dashboard')">&lsaquo; Back</span><span></span></div>
+    <div class="report-card" id="report-print">
+      <div class="report-head">
+        <div class="title">Weekly P&amp;L &mdash; ${BRAND.clientName}</div>
+        <div class="sub">Week of ${formatDate(week.weekStart)}</div>
+      </div>
+      <div class="report-net">
+        <div class="label">Net profit / loss</div>
+        <div class="value">${formatMoney(net)}</div>
+        <div class="explain">${net >= 0
+          ? `The business made ${formatMoney(net)} more than it spent this week.`
+          : `The business spent ${formatMoney(Math.abs(net))} more than it made this week.`}</div>
+      </div>
+      <div class="report-line"><div class="row"><span>Revenue</span><span>${formatMoney(revenue)}</span></div>
+        <div class="explain">What ${BRAND.clientName} brought in this week — the number everything else is measured against.</div></div>
+      <div class="report-line"><div class="row"><span>COGS</span><span>${formatMoney(Math.abs(cogs))}</span></div>
+        <div class="explain">What it cost to buy the food and drinks sold this week — ${cogsPct}% of revenue.</div></div>
+      <div class="report-line"><div class="row"><span>Labor</span><span>${formatMoney(Math.abs(labor))}</span></div>
+        <div class="explain">What it cost to pay the team that ran the restaurant this week.</div></div>
+      <div class="report-line"><div class="row"><span>Operating expenses</span><span>${formatMoney(Math.abs(opex))}</span></div>
+        <div class="explain">Everything else it took to keep the doors open — utilities, vendors, and similar bills.</div></div>
+      <div class="report-footer">Prepared by ${BRAND.consultingName}</div>
+    </div>
+    <div class="report-actions no-print"><button class="btn btn-primary" onclick="window.print()">Print / Save as PDF</button></div>
+  `;
+}
+
+function setupNoticeScreen(){
+  return `
+    <div class="setup-notice">
+      This tool isn't connected to a backend yet.<br><br>
+      Open this file in a text editor, find <code>SUPABASE_URL</code> and
+      <code>SUPABASE_ANON_KEY</code> near the top of the script, and paste
+      in your real values — then reopen this file in your browser.
+    </div>`;
+}
+
+/* ---------- Render ---------- */
+function render(){
+  const app = document.getElementById('app');
+  if (!isConfigured()){ app.innerHTML = setupNoticeScreen(); return; }
+  if (state.view === 'dashboard') app.innerHTML = dashboardScreen();
+  else if (state.view === 'pastWeeks') app.innerHTML = pastWeeksScreen();
+  else if (state.view === 'trends'){ app.innerHTML = trendsScreen(); drawTrendChart(); }
+  else if (state.view === 'report') app.innerHTML = reportScreen();
+}
+
+/* ---------- Actions ---------- */
+function goTo(view){ state.view = view; state.status = ''; render(); }
+function toggleCategory(catId){ state.expanded[catId] = !state.expanded[catId]; render(); }
+
+function toggleItemSign(catId, itemId){
+  const item = getCurrentWeek().items[catId].find(it => it.id === itemId);
+  item.sign *= -1; render();
+}
+function updateItemName(catId, itemId, value){
+  getCurrentWeek().items[catId].find(it => it.id === itemId).name = value;
+}
+function updateItemAmount(catId, itemId, value){
+  getCurrentWeek().items[catId].find(it => it.id === itemId).amount = parseFloat(value) || 0;
+  updateTotals();
+}
+function updateWeekStart(value){ getCurrentWeek().weekStart = value; }
+
+function updateTotals(){
+  const week = getCurrentWeek();
+  CATEGORY_DEFS.forEach(cat => {
+    const el = document.getElementById('cat-total-' + cat.id);
+    if (el) el.textContent = formatMoney(categoryTotal(week, cat.id));
+  });
+  const netEl = document.getElementById('net-total');
+  if (netEl) netEl.textContent = formatMoney(netTotal(week));
+}
+
+function addLineItem(catId){
+  const week = getCurrentWeek();
+  const catDef = CATEGORY_DEFS.find(c => c.id === catId);
+  week.items[catId].push(makeItem('', 0, catDef.defaultSign));
+  state.expanded[catId] = true;
+  render();
+}
+function removeLineItem(catId, itemId){
+  const week = getCurrentWeek();
+  week.items[catId] = week.items[catId].filter(it => it.id !== itemId);
+  render();
+}
+
+async function saveWeek(){
+  const week = getCurrentWeek();
+  if (!week.weekStart){
+    state.status = 'Error: pick a week-starting date first.';
+    render();
+    return;
+  }
+  state.status = 'Saving…';
+  render();
+  try {
+    await persistWeek(week);
+    week.saved = true;
+    state.status = 'Saved.';
+  } catch(e){
+    state.status = 'Error saving — check your connection and Supabase setup.';
+  }
+  render();
+}
+
+function openWeek(weekId){ state.currentWeekId = weekId; state.view = 'dashboard'; render(); }
+
+function newWeek(){
+  const id = crypto.randomUUID();
+  state.weeks.unshift({ id, weekStart: '', saved:false, items: blankItems() });
+  state.currentWeekId = id;
+  state.view = 'dashboard';
+  render();
+}
+
+/* ---------- Init ---------- */
+async function init(){
+  if (!isConfigured()){ render(); return; }
+  supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  try {
+    state.weeks = await loadAllWeeks();
+  } catch(e){
+    state.weeks = [];
+  }
+  const id = crypto.randomUUID();
+  state.weeks.unshift({ id, weekStart:'', saved:false, items: blankItems() });
+  state.currentWeekId = id;
+  render();
+}
+init();
+</script>
+</body>
+</html>
